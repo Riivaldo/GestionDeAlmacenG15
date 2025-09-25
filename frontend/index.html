@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Almacén</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>🏢 Sistema de Almacén</h1>
+        
+        <!-- LOGIN -->
+        <div id="loginSection">
+            <h2>Iniciar Sesión</h2>
+            <input type="text" id="username" placeholder="Usuario (admin/operador)" value="admin">
+            <input type="password" id="password" placeholder="Contraseña (123)" value="123">
+            <button onclick="login()">Entrar</button>
+        </div>
+        
+        <!-- DASHBOARD -->
+        <div id="dashboard" style="display: none;">
+            <div class="user-info">
+                <span id="userInfo"></span>
+                <button onclick="logout()">Salir</button>
+            </div>
+            
+            <!-- NAVEGACIÓN -->
+            <div class="nav">
+                <button onclick="showSection('productos')">Productos</button>
+                <button onclick="showSection('stock')">Stock</button>
+                <button onclick="showSection('reportes')">Reportes</button>
+                <button onclick="showSection('admin')" id="adminBtn" style="display: none;">Admin</button>
+            </div>
+            
+            <!-- PRODUCTOS -->
+            <div id="productosSection" class="section">
+                <h2>📦 Productos</h2>
+                <div class="form">
+                    <input type="text" id="nombre" placeholder="Nombre">
+                    <input type="text" id="codigo" placeholder="Código">
+                    <input type="number" id="precio" placeholder="Precio">
+                    <input type="number" id="stock" placeholder="Stock">
+                    <button onclick="crearProducto()">Crear Producto</button>
+                </div>
+                
+                <div class="search">
+                    <input type="text" id="busqueda" placeholder="Buscar...">
+                    <button onclick="buscarProductos()">Buscar</button>
+                    <button onclick="verAlertas()">🚨 Alertas Stock</button>
+                </div>
+                
+                <div id="productosLista"></div>
+            </div>
+            
+            <!-- STOCK -->
+            <div id="stockSection" class="section" style="display: none;">
+                <h2>📊 Gestión Stock</h2>
+                
+                <div class="stock-form">
+                    <h3>Entrada Stock</h3>
+                    <select id="productoEntrada"></select>
+                    <input type="number" id="cantidadEntrada" placeholder="Cantidad">
+                    <input type="text" id="motivoEntrada" placeholder="Motivo">
+                    <button onclick="entradaStock()">Registrar Entrada</button>
+                </div>
+                
+                <div class="stock-form">
+                    <h3>Salida Stock</h3>
+                    <select id="productoSalida"></select>
+                    <input type="number" id="cantidadSalida" placeholder="Cantidad">
+                    <input type="text" id="motivoSalida" placeholder="Motivo">
+                    <button onclick="salidaStock()">Registrar Salida</button>
+                </div>
+            </div>
+            
+            <!-- REPORTES -->
+            <div id="reportesSection" class="section" style="display: none;">
+                <h2>📈 Reportes</h2>
+                <button onclick="reporteMensual()">Reporte Mensual</button>
+                <button onclick="crearFactura()">Crear Factura</button>
+                <button onclick="verFacturas()">Ver Facturas</button>
+                <div id="reportesResultado"></div>
+            </div>
+            
+            <!-- ADMIN -->
+            <div id="adminSection" class="section" style="display: none;">
+                <h2>👥 Administración</h2>
+                <button onclick="verUsuarios()">Ver Usuarios</button>
+                <button onclick="verLogs()">Ver Logs</button>
+                <div id="adminResultado"></div>
+            </div>
+        </div>
+        
+        <div id="messages"></div>
+    </div>
+
+    <script>
+        let currentUser = null;
+        const API = 'http://localhost:5000';
+        
+        // LOGIN
+        async function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                const response = await fetch(`${API}/login`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({username, password})
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    currentUser = data.usuario;
+                    showMessage(`Bienvenido ${currentUser.username}`, 'success');
+                    showDashboard();
+                    cargarProductos();
+                    cargarProductosSelect();
+                } else {
+                    showMessage(data.error, 'error');
+                }
+            } catch (error) {
+                showMessage('Error de conexión', 'error');
+            }
+        }
+        
+        function showDashboard() {
+            document.getElementById('loginSection').style.display = 'none';
+            document.getElementById('dashboard').style.display = 'block';
+            document.getElementById('userInfo').textContent = `${currentUser.username} (${currentUser.role})`;
+            
+            if (currentUser.role === 'admin') {
+                document.getElementById('adminBtn').style.display = 'inline-block';
+            }
+        }
+        
+        function logout() {
+            currentUser = null;
+            document.getElementById('loginSection').style.display = 'block';
+            document.getElementById('dashboard').style.display = 'none';
+            showMessage('Sesión cerrada', 'info');
+        }
+        
+        // NAVEGACIÓN
+        function showSection(section) {
+            const sections = document.querySelectorAll('.section');
+            sections.forEach(s => s.style.display = 'none');
+            document.getElementById(section + 'Section').style.display = 'block';
+        }
+        
+        // PRODUCTOS
+        async function crearProducto() {
+            const data = {
+                nombre: document.getElementById('nombre').value,
+                codigo: document.getElementById('codigo').value,
+                precio: document.getElementById('precio').value,
+                stock: document.getElementById('stock').value
+            };
+            
+            try {
+                const response = await fetch(`${API}/productos`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showMessage('Entrada registrada', 'success');
+                    cargarProductos();
+                    cargarProductosSelect();
+                    document.getElementById('cantidadEntrada').value = '';
+                    document.getElementById('motivoEntrada').value = '';
+                } else {
+                    showMessage(result.error, 'error');
+                }
+            } catch (error) {
+                showMessage('Error en entrada', 'error');
+            }
+        }
+        
+        async function salidaStock() {
+            const data = {
+                producto_id: parseInt(document.getElementById('productoSalida').value),
+                cantidad: parseInt(document.getElementById('cantidadSalida').value),
+                motivo: document.getElementById('motivoSalida').value
+            };
+            
+            try {
+                const response = await fetch(`${API}/stock/salida`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showMessage('Salida registrada', 'success');
+                    cargarProductos();
+                    cargarProductosSelect();
+                    document.getElementById('cantidadSalida').value = '';
+                    document.getElementById('motivoSalida').value = '';
+                } else {
+                    showMessage(result.error, 'error');
+                }
+            } catch (error) {
+                showMessage('Error en salida', 'error');
+            }
+        }
+        
+        // REPORTES
+        async function reporteMensual() {
+            try {
+                const response = await fetch(`${API}/productos/reporte-mensual`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    const r = data.reporte;
+                    document.getElementById('reportesResultado').innerHTML = `
+                        <h3>📊 Reporte Mensual</h3>
+                        <p>Total productos: ${r.total_productos}</p>
+                        <p>Valor inventario: ${r.valor_inventario}</p>
+                        <p>Productos bajo stock: ${r.productos_bajo_stock}</p>
+                        <p>Fecha: ${new Date(r.fecha).toLocaleDateString()}</p>
+                    `;
+                }
+            } catch (error) {
+                showMessage('Error generando reporte', 'error');
+            }
+        }
+        
+        async function crearFactura() {
+            const cliente = prompt('Nombre del cliente:');
+            const tipo = prompt('Tipo (mayorista/minorista):');
+            
+            if (cliente && tipo) {
+                const data = {
+                    cliente: cliente,
+                    tipo_cliente: tipo,
+                    productos: [{producto_id: 1, cantidad: 1}] // Ejemplo
+                };
+                
+                try {
+                    const response = await fetch(`${API}/facturas`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(data)
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        showMessage('Factura creada', 'success');
+                        document.getElementById('reportesResultado').innerHTML = `
+                            <h3>✅ Factura Creada</h3>
+                            <p>ID: ${result.factura.id}</p>
+                            <p>Cliente: ${result.factura.cliente}</p>
+                            <p>Total: ${result.factura.total}</p>
+                            <p>Código QR: ${result.factura.codigo_qr}</p>
+                        `;
+                    } else {
+                        showMessage(result.error, 'error');
+                    }
+                } catch (error) {
+                    showMessage('Error creando factura', 'error');
+                }
+            }
+        }
+        
+        async function verFacturas() {
+            try {
+                const response = await fetch(`${API}/facturas`);
+                const data = await response.json();
+                
+                let html = '<h3>💰 Facturas</h3>';
+                html += `<p>Total facturado: ${data.total_facturado}</p>`;
+                html += `<p>Cantidad facturas: ${data.cantidad_facturas}</p>`;
+                
+                if (data.facturas.length > 0) {
+                    html += '<table><tr><th>ID</th><th>Cliente</th><th>Tipo</th><th>Total</th></tr>';
+                    data.facturas.forEach(f => {
+                        html += `<tr><td>${f.id}</td><td>${f.cliente}</td><td>${f.tipo}</td><td>${f.total}</td></tr>`;
+                    });
+                    html += '</table>';
+                }
+                
+                document.getElementById('reportesResultado').innerHTML = html;
+            } catch (error) {
+                showMessage('Error cargando facturas', 'error');
+            }
+        }
+        
+        // ADMIN
+        async function verUsuarios() {
+            if (currentUser.role !== 'admin') {
+                showMessage('Solo admin puede ver usuarios', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API}/usuarios`);
+                const data = await response.json();
+                
+                let html = '<h3>👥 Usuarios</h3><table><tr><th>Usuario</th><th>Rol</th></tr>';
+                data.usuarios.forEach(u => {
+                    html += `<tr><td>${u.username}</td><td>${u.role}</td></tr>`;
+                });
+                html += '</table>';
+                
+                document.getElementById('adminResultado').innerHTML = html;
+            } catch (error) {
+                showMessage('Error cargando usuarios', 'error');
+            }
+        }
+        
+        async function verLogs() {
+            if (currentUser.role !== 'admin') {
+                showMessage('Solo admin puede ver logs', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API}/logs`);
+                const data = await response.json();
+                
+                let html = '<h3>📋 Logs de Acceso</h3>';
+                data.logs.forEach(log => {
+                    html += `<div><strong>${log.usuario}</strong> - ${log.accion} <small>(${new Date(log.fecha).toLocaleString()})</small></div>`;
+                });
+                
+                document.getElementById('adminResultado').innerHTML = html;
+            } catch (error) {
+                showMessage('Error cargando logs', 'error');
+            }
+        }
+        
+        // UTILIDADES
+        function showMessage(message, type) {
+            const div = document.createElement('div');
+            div.className = `message ${type}`;
+            div.textContent = message;
+            document.getElementById('messages').appendChild(div);
+            
+            setTimeout(() => div.remove(), 3000);
+        }
+        
+        // Cargar productos al inicio
+        window.onload = function() {
+            showSection('productos');
+        };
+    </script>
+</body>
+</html>
